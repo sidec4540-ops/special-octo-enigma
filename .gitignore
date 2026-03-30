@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Конфиги (чтобы не залить случайно)
+configs/
+*.cfg
+*.ini
+.env
+
+# Логи и кэш
+logs/
+storage/
+*.log
+
+# IDE
+.vscode/
+.idea/
