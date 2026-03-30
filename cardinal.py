@@ -55,25 +55,11 @@ class PluginData:
     def __init__(self, name: str, version: str, desc: str, credentials: str, uuid: str,
                  path: str, plugin: ModuleType, settings_page: bool, delete_handler: Callable | None, enabled: bool,
                  pinned: bool):
-        """
-        :param name: название плагина.
-        :param version: версия плагина.
-        :param desc: описание плагина.
-        :param credentials: авторы плагина.
-        :param uuid: UUID плагина.
-        :param path: путь до плагина.
-        :param plugin: экземпляр плагина как модуля.
-        :param settings_page: есть ли страница настроек у плагина.
-        :param delete_handler: хэндлер, привязанный к удалению плагина.
-        :param enabled: включен ли плагин.
-        :param pinned: закреплен ли плагин в списке плагинов?
-        """
         self.name = name
         self.version = version
         self.description = desc
         self.credits = credentials
         self.uuid = uuid
-
         self.path = path
         self.plugin = plugin
         self.settings_page = settings_page
@@ -96,32 +82,28 @@ class Cardinal(object):
                  version: str):
         self.VERSION = version
         self.instance_id = random.randint(0, 999999999)
-        self.delivery_tests = {}  # Одноразовые ключи для тестов автовыдачи. {"ключ": "название лота"}
+        self.delivery_tests = {}
 
-        # Конфиги
         self.MAIN_CFG = main_config
         self.AD_CFG = auto_delivery_config
         self.AR_CFG = auto_response_config
         self.RAW_AR_CFG = raw_auto_response_config
-        # Прокси
+
         self.proxy = {}
-        self.proxy_dict = cardinal_tools.load_proxy_dict()  # прокси {0: "login:password@ip:port", 1: "ip:port"...}
+        self.proxy_dict = cardinal_tools.load_proxy_dict()
         if self.MAIN_CFG["Proxy"].getboolean("enable"):
             if self.MAIN_CFG["Proxy"]["proxy"]:
                 logger.info(_("crd_proxy_detected"))
-
                 scheme, login, password, ip, port = validate_proxy(self.MAIN_CFG["Proxy"]["proxy"])
                 proxy_str = build_proxy(scheme, login, password, ip, port)
                 self.proxy = {
                     "http": proxy_str,
                     "https": proxy_str
                 }
-
                 if proxy_str not in self.proxy_dict.values():
                     max_id = max(self.proxy_dict.keys(), default=-1)
                     self.proxy_dict[max_id + 1] = proxy_str
                     cardinal_tools.cache_proxy_dict(self.proxy_dict)
-
                 if self.MAIN_CFG["Proxy"].getboolean("check") and not cardinal_tools.check_proxy(self.proxy):
                     sys.exit()
 
@@ -136,31 +118,24 @@ class Cardinal(object):
         self.start_time = int(time.time())
 
         self.balance: FunPayAPI.types.Balance | None = None
-        self.raise_time = {}  # Временные метки поднятия категорий {id игры: след. время поднятия}
-        self.raised_time = {}  # Время последнего поднятия категории {id игры: время последнего поднятия}
-        self.__exchange_rates = {}  # Курс валют {(валюта1, валюта2): (курс, время обновления)}
-        self.profile: FunPayAPI.types.UserProfile | None = None  # FunPay профиль для всего кардинала (+ хэндлеров)
-        self.tg_profile: FunPayAPI.types.UserProfile | None = None  # FunPay профиль (для Telegram-ПУ)
-        self.last_tg_profile_update = datetime.datetime.now()  # Последнее время обновления профиля для TG-ПУ
-        self.curr_profile: FunPayAPI.types.UserProfile | None = None  # Текущий профиль (для восст. / деакт. лотов.)
-        # Тег последнего event'а, после которого обновлялся self.current_profile
+        self.raise_time = {}
+        self.raised_time = {}
+        self.__exchange_rates = {}
+        self.profile: FunPayAPI.types.UserProfile | None = None
+        self.tg_profile: FunPayAPI.types.UserProfile | None = None
+        self.last_tg_profile_update = datetime.datetime.now()
+        self.curr_profile: FunPayAPI.types.UserProfile | None = None
         self.curr_profile_last_tag: str | None = None
-        # Тег последнего event'а, после которого в self.profile добавлялись отсутствующие ранее лоты
         self.profile_last_tag: str | None = None
-        # Тег последнего event'а, после которого обновлялось состояние лотов.
         self.last_state_change_tag: str | None = None
-        # Тег последнего event'а, перед которым пороговое значение для определения новых чатов.
         self.last_profile_refresh_event_tag: str | None = None
-        # Тег последнего event'а, после которого был запущен отдельный поток обновления профилей и состояний лотов.
         self.last_greeting_chat_id_threshold_change_tag: str | None = None
-        self.greeting_threshold_chat_ids = set()  # ID чатов для последующего обновления  self.greeting_chat_id_threshold
-        self.blacklist = cardinal_tools.load_blacklist()  # ЧС.
+        self.greeting_threshold_chat_ids = set()
+        self.blacklist = cardinal_tools.load_blacklist()
         self.old_users = cardinal_tools.load_old_users(
-            float(self.MAIN_CFG["Greetings"]["greetingsCooldown"]))  # Уже написавшие пользователи.
+            float(self.MAIN_CFG["Greetings"]["greetingsCooldown"]))
         self.greeting_chat_id_threshold = max(self.old_users.keys(), default=0)
-        # пороговое значение для определения новых чатов (для приветствия)
 
-        # Хэндлеры
         self.pre_init_handlers = []
         self.post_init_handlers = []
         self.pre_start_handlers = []
@@ -209,9 +184,6 @@ class Cardinal(object):
         self.pinned_plugins = cardinal_tools.load_pinned_plugins()
 
     def __init_account(self) -> None:
-        """
-        Инициализирует класс аккаунта (self.account)
-        """
         while True:
             try:
                 self.account.get()
@@ -234,19 +206,7 @@ class Cardinal(object):
 
     def __update_profile(self, infinite_polling: bool = True, attempts: int = 0, update_telegram_profile: bool = True,
                          update_main_profile: bool = True) -> bool:
-        """
-        Загружает данные о лотах категориях аккаунта
-
-        :param infinite_polling: бесконечно посылать запросы, пока не будет получен ответ (игнорировать макс. кол-во
-        попыток)
-        :param attempts: максимальное кол-во попыток.
-        :param update_telegram_profile: обновить ли информацию о профиле для TG ПУ?
-        :param update_main_profile: обновить ли информацию о профиле для всего кардинала (+ хэндлеров)?
-
-        :return: True, если информация обновлена, False, если превышено макс. кол-во попыток.
-        """
         logger.info(_("crd_getting_profile_data"))
-        # Получаем категории аккаунта.
         while attempts or infinite_polling:
             try:
                 profile = self.account.get_user(self.account.id)
@@ -278,11 +238,13 @@ class Cardinal(object):
         return True
 
     def __init_telegram(self) -> None:
-        """
-        Инициализирует Telegram бота.
-        """
-        self.telegram = tg_bot.bot.TGBot(self)
-        self.telegram.init()
+        try:
+            self.telegram = tg_bot.bot.TGBot(self)
+            self.telegram.init()
+        except Exception as e:
+            logger.error(f"Ошибка инициализации Telegram бота: {e}")
+            logger.debug("TRACEBACK", exc_info=True)
+            self.telegram = None
 
     def get_balance(self, attempts: int = 3) -> FunPayAPI.types.Balance:
         subcategories = self.account.get_sorted_subcategories()[FunPayAPI.enums.SubCategoryTypes.COMMON]
@@ -297,28 +259,15 @@ class Cardinal(object):
         balance = self.account.get_balance(random.choice(lots).id)
         return balance
 
-    # Прочее
     def raise_lots(self) -> int:
-        """
-        Пытается поднять лоты.
-
-        :return: предположительное время, когда нужно снова запустить данную функцию.
-        """
-        # Время следующего вызова функции (по умолчанию - бесконечность).
         next_call = float("inf")
-
         for subcat in sorted(list(self.curr_profile.get_sorted_lots(2).keys()), key=lambda x: x.category.position):
             if subcat.type is SubCategoryTypes.CURRENCY:
                 continue
-            # Если id категории текущей подкатегории уже находится в self.game_ids, но время поднятия подкатегорий
-            # данной категории еще не настало - пропускам эту подкатегорию.
             if (saved_time := self.raise_time.get(subcat.category.id)) and saved_time > int(time.time()):
-                # Если записанное в self.game_ids время больше текущего времени
-                # обновляем время next_call'а на записанное время.
                 next_call = saved_time if saved_time < next_call else next_call
                 continue
 
-            # В любом другом случае пытаемся поднять лоты всех категорий, относящихся к игре
             raise_ok = False
             error_text = ""
             time_delta = ""
@@ -328,7 +277,7 @@ class Cardinal(object):
                 logger.info(_("crd_lots_raised", subcat.category.name))
                 raise_ok = True
                 last_time = self.raised_time.get(subcat.category.id)
-                self.raised_time[subcat.category.id] = new_time = int(time.time())  # locale
+                self.raised_time[subcat.category.id] = new_time = int(time.time())
                 time_delta = "" if not last_time else f" Последнее поднятие: {cardinal_tools.time_to_str(new_time - last_time)} назад."
                 time.sleep(1)
                 self.account.raise_lots(subcat.category.id)
@@ -390,23 +339,16 @@ class Cardinal(object):
         for i in range(2, -1, -1):
             try:
                 obj._order = self.account.get_order(order_id)
-                logger.info(f"Получил информацию о заказе {obj._order}")  # locale
+                logger.info(f"Получил информацию о заказе {obj._order}")
                 return obj._order
             except:
-                logger.warning(f"Произошла ошибка при получении заказа #{order_id}. Осталось {i} попыток.")  # locale
+                logger.warning(f"Произошла ошибка при получении заказа #{order_id}. Осталось {i} попыток.")
                 logger.debug("TRACEBACK", exc_info=True)
                 time.sleep(1)
         obj._order_attempt_error = True
 
     @staticmethod
     def split_text(text: str) -> list[str]:
-        """
-        Разбивает текст на суб-тексты по 20 строк.
-
-        :param text: исходный текст.
-
-        :return: список из суб-текстов.
-        """
         output = []
         lines = text.split("\n")
         while lines:
@@ -417,14 +359,6 @@ class Cardinal(object):
         return output
 
     def parse_message_entities(self, msg_text: str) -> list[str | int | float]:
-        """
-        Разбивает сообщения по 20 строк, отделяет изображения от текста.
-        (обозначение изображения: $photo=1234567890)
-
-        :param msg_text: текст сообщения.
-
-        :return: набор текстов сообщений / изображений.
-        """
         msg_text = "\n".join(i.strip() for i in msg_text.split("\n"))
         while "\n\n" in msg_text:
             msg_text = msg_text.replace("\n\n", "\n[a][/a]\n")
@@ -449,18 +383,6 @@ class Cardinal(object):
     def send_message(self, chat_id: int | str, message_text: str, chat_name: str | None = None,
                      interlocutor_id: int | None = None, attempts: int = 3,
                      watermark: bool = True) -> list[FunPayAPI.types.Message] | None:
-        """
-        Отправляет сообщение в чат FunPay.
-
-        :param chat_id: ID чата.
-        :param message_text: текст сообщения.
-        :param chat_name: название чата (необязательно).
-        :param interlocutor_id: ID собеседника (необязательно).
-        :param attempts: кол-во попыток на отправку сообщения.
-        :param watermark: добавлять ли водяной знак в начало сообщения?
-
-        :return: объект сообщения / последнего сообщения, если оно доставлено, иначе - None
-        """
         if self.MAIN_CFG["Other"].get("watermark") and watermark and not message_text.strip().startswith("$photo="):
             message_text = f"{self.MAIN_CFG['Other']['watermark']}\n" + message_text
 
@@ -504,22 +426,6 @@ class Cardinal(object):
         return result
 
     def get_exchange_rate(self, base_currency: types.Currency, target_currency: types.Currency, min_interval: int = 60):
-        """
-        Получает курс обмена между двумя указанными валютами.
-        Если с последней проверки прошло меньше `min_interval` секунд, используется сохранённое значение.
-
-        :param base_currency: Исходная валюта, из которой производится обмен.
-        :type base_currency: :obj:`types.Currency`
-
-        :param target_currency: Целевая валюта, в которую производится обмен.
-        :type target_currency: :obj:`types.Currency`
-
-        :param min_interval: Минимальное время в секундах между проверками курса обмена.
-        :type min_interval: :obj:`int`
-
-        :return: Коэффициент обмена, где 1 единица `base_currency` = X единиц `target_currency`.
-        :rtype: :obj:`float`
-        """
         assert base_currency != types.Currency.UNKNOWN and target_currency != types.Currency.UNKNOWN
         if base_currency == target_currency:
             return 1
@@ -553,13 +459,6 @@ class Cardinal(object):
         raise Exception("Не удалось получить курс обмена: превышено количество попыток.")
 
     def update_session(self, attempts: int = 3) -> bool:
-        """
-        Обновляет данные аккаунта (баланс, токены и т.д.)
-
-        :param attempts: кол-во попыток.
-
-        :return: True, если удалось обновить данные, False - если нет.
-        """
         while attempts:
             try:
                 self.account.get(update_phpsessid=True)
@@ -580,11 +479,7 @@ class Cardinal(object):
             logger.error(_("crd_session_no_more_attempts_err"))
             return False
 
-    # Бесконечные циклы
     def process_events(self):
-        """
-        Запускает хэндлеры, привязанные к тому или иному событию.
-        """
         instance_id = self.run_id
         events_handlers = {
             FunPayAPI.events.EventTypes.INITIAL_CHAT: self.init_message_handlers,
@@ -604,9 +499,6 @@ class Cardinal(object):
             self.run_handlers(events_handlers[event.type], (self, event))
 
     def lots_raise_loop(self):
-        """
-        Запускает бесконечный цикл поднятия категорий (если autoRaise в _main.cfg == 1)
-        """
         if not self.profile.get_lots():
             logger.info(_("crd_raise_loop_not_started"))
             return
@@ -626,9 +518,6 @@ class Cardinal(object):
                 logger.debug("TRACEBACK", exc_info=True)
 
     def update_session_loop(self):
-        """
-        Запускает бесконечный цикл обновления данных о пользователе.
-        """
         logger.info(_("crd_session_loop_started"))
         sleep_time = 3600
         while True:
@@ -636,26 +525,25 @@ class Cardinal(object):
             result = self.update_session()
             sleep_time = 60 if not result else 3600
 
-    # Управление процессом
     def init(self):
-        """
-        Инициализирует кардинал: регистрирует хэндлеры, инициализирует и запускает Telegram бота,
-        получает данные аккаунта и профиля.
-        """
         self.add_handlers_from_plugin(handlers)
         self.add_handlers_from_plugin(announcements)
         self.load_plugins()
         self.add_handlers()
 
         if self.MAIN_CFG["Telegram"].getboolean("enabled"):
-            self.__init_telegram()
-            for module in [auto_response_cp, auto_delivery_cp, config_loader_cp, templates_cp, plugins_cp,
-                           file_uploader, authorized_users_cp, proxy_cp, default_cp]:
-                self.add_handlers_from_plugin(module)
+            try:
+                self.__init_telegram()
+                for module in [auto_response_cp, auto_delivery_cp, config_loader_cp, templates_cp, plugins_cp,
+                               file_uploader, authorized_users_cp, proxy_cp, default_cp]:
+                    self.add_handlers_from_plugin(module)
+            except Exception as e:
+                logger.error(f"Ошибка инициализации Telegram модулей: {e}")
+                logger.debug("TRACEBACK", exc_info=True)
 
         self.run_handlers(self.pre_init_handlers, (self,))
 
-        if self.MAIN_CFG["Telegram"].getboolean("enabled"):
+        if self.MAIN_CFG["Telegram"].getboolean("enabled") and self.telegram:
             try:
                 self.telegram.setup_commands()
             except:
@@ -663,7 +551,7 @@ class Cardinal(object):
                 logger.debug("TRACEBACK", exc_info=True)
             try:
                 self.telegram.edit_bot()
-            except AttributeError:  # todo убрать когда-то
+            except AttributeError:
                 logger.warning("Произошла ошибка при изменении бота Telegram. Обновляю библиотеку...")
                 logger.debug("TRACEBACK", exc_info=True)
                 try:
@@ -685,9 +573,6 @@ class Cardinal(object):
         return self
 
     def run(self):
-        """
-        Запускает кардинал после инициализации. Используется для первого старта.
-        """
         self.run_id += 1
         self.start_time = int(time.time())
         Thread(target=self.runner.loop, daemon=True).start()
@@ -699,26 +584,17 @@ class Cardinal(object):
         self.process_events()
 
     def start(self):
-        """
-        Запускает кардинал после остановки. Не используется.
-        """
         self.run_id += 1
         self.run_handlers(self.pre_start_handlers, (self,))
         self.run_handlers(self.post_start_handlers, (self,))
         self.process_events()
 
     def stop(self):
-        """
-        Останавливает кардинал. Не используется.
-        """
         self.run_id += 1
         self.run_handlers(self.pre_stop_handlers, (self,))
         self.run_handlers(self.post_stop_handlers, (self,))
 
     def update_lots_and_categories(self):
-        """
-        Парсит лоты (для ПУ TG).
-        """
         result = self.__update_profile(infinite_polling=False, attempts=3, update_main_profile=False)
         return result
 
@@ -736,22 +612,11 @@ class Cardinal(object):
 
     @staticmethod
     def save_config(config: configparser.ConfigParser, file_path: str) -> None:
-        """
-        Сохраняет конфиг в указанный файл.
-
-        :param config: объект конфига.
-        :param file_path: путь до файла, в который нужно сохранить конфиг.
-        """
         with open(file_path, "w", encoding="utf-8") as f:
             config.write(f)
 
-    # Загрузка плагинов
     @staticmethod
     def is_uuid_valid(uuid: str) -> bool:
-        """
-        Проверяет, является ли UUID плагина валидным.
-        :param uuid: UUID4.
-        """
         try:
             uuid_obj = UUID(uuid, version=4)
         except ValueError:
@@ -760,11 +625,6 @@ class Cardinal(object):
 
     @staticmethod
     def is_plugin(file: str) -> bool:
-        """
-        Есть ли "noplug" в начале файла плагина?
-
-        :param file: файл плагина.
-        """
         with open(f"plugins/{file}", "r", encoding="utf-8") as f:
             line = f.readline()
         if line.startswith("#"):
@@ -776,12 +636,6 @@ class Cardinal(object):
 
     @staticmethod
     def load_plugin(from_file: str) -> tuple:
-        """
-        Создает модуль из переданного файла-плагина и получает необходимые поля для PluginData.
-        :param from_file: путь до файла-плагина.
-
-        :return: плагин, поля плагина.
-        """
         spec = importlib.util.spec_from_file_location(f"plugins.{from_file[:-3]}", f"plugins/{from_file}")
         plugin = importlib.util.module_from_spec(spec)
         sys.modules[f"plugins.{from_file[:-3]}"] = plugin
@@ -799,9 +653,6 @@ class Cardinal(object):
         return plugin, result
 
     def load_plugins(self):
-        """
-        Импортирует все плагины из папки plugins.
-        """
         if not os.path.exists("plugins"):
             logger.warning(_("crd_no_plugins_folder"))
             return
@@ -837,12 +688,6 @@ class Cardinal(object):
             self.plugins[data["UUID"]] = plugin_data
 
     def add_handlers_from_plugin(self, plugin, uuid: str | None = None):
-        """
-        Добавляет хэндлеры из плагина + присваивает каждому хэндлеру UUID плагина.
-
-        :param plugin: модуль (плагин).
-        :param uuid: UUID плагина (None для встроенных хэндлеров).
-        """
         for name in self.handler_bind_var_names:
             try:
                 functions = getattr(plugin, name)
@@ -854,20 +699,11 @@ class Cardinal(object):
         logger.info(_("crd_handlers_registered", plugin.__name__))
 
     def add_handlers(self):
-        """
-        Регистрирует хэндлеры из всех плагинов.
-        """
         for i in self.plugins:
             plugin = self.plugins[i].plugin
             self.add_handlers_from_plugin(plugin, i)
 
     def run_handlers(self, handlers_list: list[Callable], args) -> None:
-        """
-        Выполняет функции из списка handlers.
-
-        :param handlers_list: Список хэндлеров.
-        :param args: аргументы для хэндлеров.
-        """
         for func in handlers_list:
             try:
                 plugin_uuid = getattr(func, "plugin_uuid")
@@ -883,16 +719,6 @@ class Cardinal(object):
                 logger.debug("TRACEBACK", exc_info=True)
 
     def add_telegram_commands(self, uuid: str, commands: list[tuple[str, str, bool]]):
-        """
-        Добавляет команды в список команд плагина.
-        [
-            ("команда1", "описание команды", Добавлять ли в меню команд (True / False)),
-            ("команда2", "описание команды", Добавлять ли в меню команд (True / False))
-        ]
-
-        :param uuid: UUID плагина.
-        :param commands: список команд (без "/")
-        """
         if uuid not in self.plugins:
             return
 
@@ -902,10 +728,6 @@ class Cardinal(object):
                 self.telegram.add_command_to_menu(i[0], i[1])
 
     def toggle_plugin(self, uuid):
-        """
-        Активирует / деактивирует плагин.
-        :param uuid: UUID плагина.
-        """
         self.plugins[uuid].enabled = not self.plugins[uuid].enabled
         if self.plugins[uuid].enabled and uuid in self.disabled_plugins:
             self.disabled_plugins.remove(uuid)
@@ -914,10 +736,6 @@ class Cardinal(object):
         cardinal_tools.cache_disabled_plugins(self.disabled_plugins)
 
     def pin_plugin(self, uuid):
-        """
-        Закрепляет / открепляет плагин в списке плагинов.
-        :param uuid: UUID плагина.
-        """
         self.plugins[uuid].pinned = not self.plugins[uuid].pinned
         if not self.plugins[uuid].pinned and uuid in self.pinned_plugins:
             self.pinned_plugins.remove(uuid)
@@ -925,7 +743,6 @@ class Cardinal(object):
             self.pinned_plugins.append(uuid)
         cardinal_tools.cache_pinned_plugins(self.pinned_plugins)
 
-    # Настройки
     @property
     def autoraise_enabled(self) -> bool:
         return self.MAIN_CFG["FunPay"].getboolean("autoRaise")
