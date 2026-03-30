@@ -164,7 +164,9 @@ logger.info("Запуск бота...")
 print("Бот запускается...")
 
 try:
-    Cardinal(MAIN_CFG, AD_CFG, AR_CFG, RAW_AR_CFG, VERSION).init().run()
+    bot_instance = Cardinal(MAIN_CFG, AD_CFG, AR_CFG, RAW_AR_CFG, VERSION).init()
+    # Принудительно запускаем цикл получения сообщений (Long Polling)
+    bot_instance.run()
 except KeyboardInterrupt:
     logger.info("Завершаю программу...")
     sys.exit()
@@ -173,4 +175,4 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     time.sleep(5)
-    sys.exit()
+    sys.exit() 
