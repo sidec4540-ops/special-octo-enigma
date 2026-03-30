@@ -10,6 +10,7 @@ from cardinal import Cardinal
 from locales.localizer import Localizer
 from configparser import ConfigParser
 import requests
+import telebot
 
 VERSION = "0.1.17.6"
 
@@ -57,6 +58,14 @@ print(f"Golden key загружен из переменной окружения
 print(f"Telegram токен загружен из переменной окружения")
 print(f"Telegram user_id: {TG_USER_ID}")
 
+# ==================== НАСТРОЙКА ПРОКСИ ДЛЯ TELEGRAM ====================
+TG_PROXY = os.getenv("TG_PROXY_URL", "")
+if TG_PROXY:
+    telebot.apihelper.proxy = {'https': TG_PROXY, 'http': TG_PROXY}
+    print(f"Telegram прокси установлен: {TG_PROXY}")
+else:
+    print("Telegram прокси не установлен")
+
 # ==================== КОНФИГ ====================
 MAIN_CFG = ConfigParser(delimiters=(":",), interpolation=None)
 MAIN_CFG.optionxform = str
@@ -80,7 +89,7 @@ MAIN_CFG["Telegram"] = {
     "user_id": TG_USER_ID,
     "secretKeyHash": "MyPassword123",
     "blockLogin": "0",
-    "proxy": ""
+    "proxy": TG_PROXY
 }
 
 MAIN_CFG["Proxy"] = {
@@ -165,7 +174,6 @@ print("Бот запускается...")
 
 try:
     bot_instance = Cardinal(MAIN_CFG, AD_CFG, AR_CFG, RAW_AR_CFG, VERSION).init()
-    # Принудительно запускаем цикл получения сообщений (Long Polling)
     bot_instance.run()
 except KeyboardInterrupt:
     logger.info("Завершаю программу...")
@@ -175,4 +183,4 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     time.sleep(5)
-    sys.exit() 
+    sys.exit()
