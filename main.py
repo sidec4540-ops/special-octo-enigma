@@ -84,10 +84,10 @@ MAIN_CFG["Telegram"] = {
 }
 
 MAIN_CFG["Proxy"] = {
-    "enable": "0",
-    "proxy": "",
+    "enable": "1",
+    "proxy": os.getenv("PROXY_URL", ""),
     "check": "0"
-}
+} 
 
 MAIN_CFG["Other"] = {
     "watermark": "🐦",
