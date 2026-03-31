@@ -93,7 +93,7 @@ MAIN_CFG["Telegram"] = {
 }
 
 MAIN_CFG["Proxy"] = {
-    "enable": "1",
+    "enable": "0",
     "proxy": os.getenv("PROXY_URL", ""),
     "check": "0"
 } 
